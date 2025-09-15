@@ -236,35 +236,34 @@ def create_skill():
 
 
 @app.route('/skills/<id>', methods=['PUT'])
+@app.route('/skills/<id>', methods=['PUT'])
 def update_skill(id):
     """
-    Aktualisiert einen bestehenden Lern-Skill anhand seiner ID.
-    Erfordert 'name' und 'topicId' im JSON-Request-Body für die vollständige Aktualisierung.
+    Updates an existing Skill by ID (with for loop).
+    Allows partial updates: only fields in the JSON request body are overwritten.
     """
-    updated_data = request.json
-    if not updated_data or 'name' not in updated_data or 'topicId' not in updated_data:
-        return jsonify({"error": "Name und Topic ID für den Skill sind erforderlich"}), 400
-
-    skills = data_manager.read_data(SKILLS_FILE)
-
-    found_index = -1
-    for i, s in enumerate(skills):
-        if s['id'] == id:
-            found_index = i
-            break
-
-    if found_index == -1:
+    s = Skill.query.get(id)
+    
+    if not s:
         return jsonify({"error": "Skill not found"}), 404
 
-    # Aktualisiere die Felder des gefundenen Skills
-    skills[found_index]['name'] = updated_data['name']
-    skills[found_index]['topicId'] = updated_data['topicId']
-    # 'difficulty' wird aktualisiert, wenn im Request vorhanden, sonst bleibt der alte Wert
-    skills[found_index]['difficulty'] = updated_data.get('difficulty', skills[found_index].get('difficulty', 'unknown'))
+    payload = request.get_json(silent=True) or {}
 
-    data_manager.write_data(SKILLS_FILE, skills)
+    protected_fields = {"id", "created_at"}
 
-    return jsonify(skills[found_index]), 200
+    for key, value in payload.items():
+        # Handle topicID/topicId special case
+        if key in {"topicID", "topicId"}:
+            if not Topic.query.get(value):
+                return jsonify({"error": "topicID not found"}), 422
+            setattr(s, "topic_id", value)
+        # Update other fields dynamically
+        elif hasattr(s, key) and key not in protected_fields:
+            setattr(s, key, value)
+
+    db.session.commit()
+    return s.to_dict()
+
 
 @app.route('/skills/<id>', methods=['DELETE'])
 def delete_skill(id):
