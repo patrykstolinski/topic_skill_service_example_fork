@@ -35,13 +35,28 @@ def healthz():
 # --- TOPIC ENDPUNKTE ---
 
 @app.route('/topics', methods=['GET'])
-def get_topics():
-    """
-    Ruft alle verfügbaren Lern-Topics ab.
-    """
-    rows = Topic.query.order_by(Topic.name.asc()).all()
-    data = [topic.to_dict() for topic in rows]
-    return jsonify(data)
+def list_topics():
+    q = request.args.get("q")
+    parent_id = request.args.get("parentId") or None
+    try:
+        limit = min(int(request.args.get("limit", 50)), 200)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except:
+        return jsonify({"error": "limit/offset must be numbers"}), 422
+
+    query = Topic.query
+    if q:
+        query = query.filter(Topic.name.ilike(f"%{q}%"))
+    if parent_id:
+        query = query.filter(Topic.parent_topic_id == parent_id)
+
+    total = query.count()
+    items = query.order_by(Topic.name.asc()).limit(limit).offset(offset).all()
+
+    return {
+        "data": [t.to_dict() for t in items],
+        "meta": {"total": total, "limit": limit, "offset": offset}
+    }
 
 @app.route('/topics/<id>', methods=['GET'])
 def get_topic_by_id(id):
@@ -84,60 +99,60 @@ def create_topic():
     return topic.to_dict(), 201
     
 
-@app.route('/topics/<id>', methods=['PUT'])
-def update_topic(id):
-    """
-    Aktualisiert ein bestehendes Lern-Topic anhand seiner ID.
-    Erfordert 'name' und 'description' im JSON-Request-Body für die vollständige Aktualisierung.
-    """
-    topic = Topic.query.get(id)
-    if not topic:
-        return jsonify({"error": "Topic not found"}), 404
-
-    payload = request.get_json(silent=True) or {}
-    name = (payload.get("name") or topic.name).strip()
-    description = payload.get("description", topic.description)
-    parent_id = payload.get("parentTopicID", topic.parent_topic_id)
-
-    if parent_id:
-        parent = Topic.query.get(parent_id)
-        if not parent:
-            return jsonify({"error": "parentTopicID not found"}), 422
-    
-    topic.name = name
-    topic.description = description
-    topic.parent_topic_id = parent_id
-    db.session.commit()
-    return topic.to_dict()
-
 # @app.route('/topics/<id>', methods=['PUT'])
 # def update_topic(id):
 #     """
 #     Aktualisiert ein bestehendes Lern-Topic anhand seiner ID.
-#     Erlaubt partielle Updates: nur Felder im JSON-Request-Body werden überschrieben.
+#     Erfordert 'name' und 'description' im JSON-Request-Body für die vollständige Aktualisierung.
 #     """
 #     topic = Topic.query.get(id)
-    
 #     if not topic:
-#         return jsonify({"error": "Topic with this ID does not exist"}), 404
-    
+#         return jsonify({"error": "Topic not found"}), 404
+
 #     payload = request.get_json(silent=True) or {}
+#     name = (payload.get("name") or topic.name).strip()
+#     description = payload.get("description", topic.description)
+#     parent_id = payload.get("parentTopicID", topic.parent_topic_id)
 
-#     protected_fields = {"id", "created_at"}
-
-#     for key, value in payload.items():
-#         if hasattr(topic, key) and key not in protected_fields:
-#             setattr(topic, key, value)
-
-#     parent_id = payload.get("parent_topic_id")
 #     if parent_id:
 #         parent = Topic.query.get(parent_id)
 #         if not parent:
 #             return jsonify({"error": "parentTopicID not found"}), 422
-#         topic.parent_topic_id = parent_id
-
+    
+#     topic.name = name
+#     topic.description = description
+#     topic.parent_topic_id = parent_id
 #     db.session.commit()
 #     return topic.to_dict()
+
+@app.route('/topics/<id>', methods=['PUT'])
+def update_topic(id):
+    """
+    Aktualisiert ein bestehendes Lern-Topic anhand seiner ID (mit For Schleife).
+    Erlaubt partielle Updates: nur Felder im JSON-Request-Body werden überschrieben.
+    """
+    topic = Topic.query.get(id)
+    
+    if not topic:
+        return jsonify({"error": "Topic with this ID does not exist"}), 404
+    
+    payload = request.get_json(silent=True) or {}
+
+    protected_fields = {"id", "created_at"}
+
+    for key, value in payload.items():
+        if hasattr(topic, key) and key not in protected_fields:
+            setattr(topic, key, value)
+
+    parent_id = payload.get("parent_topic_id")
+    if parent_id:
+        parent = Topic.query.get(parent_id)
+        if not parent:
+            return jsonify({"error": "parentTopicID not found"}), 422
+        topic.parent_topic_id = parent_id
+
+    db.session.commit()
+    return topic.to_dict()
 
 @app.route('/topics/<id>', methods=['DELETE'])
 def delete_topic(id):
@@ -166,49 +181,59 @@ def delete_topic(id):
 # --- SKILL ENDPUNKTE ---
 
 @app.route('/skills', methods=['GET'])
-def get_skills():
-    """
-    Ruft alle verfügbaren Lern-Skills ab.
-    """
-    skills = data_manager.read_data(SKILLS_FILE)
-    return jsonify(skills)
+def list_skills():
+    q = request.args.get("q")
+    topic_id = request.args.get("topicId")
+    try:
+        limit = min(int(request.args.get("limit", 50)), 200)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except:
+        return jsonify({"error": "limit/offset must be numbers"}), 422
+
+    query = Skill.query
+
+    if q:
+        query = query.filter(Skill.name.ilike(f"%{q}%"))
+    if topic_id:
+        query = query.filter(Skill.topic_id == topic_id)
+
+    total = query.count()
+    items = query.order_by(Skill.name.asc()).limit(limit).offset(offset).all()
+
+    return {
+        "data": [s.to_dict() for s in items],
+        "meta": {"total": total, "limit": limit, "offset": offset}
+    }
+
 
 @app.route('/skills/<id>', methods=['GET'])
-def get_skill_by_id(id):
-    """
-    Ruft einen einzelnen Lern-Skill anhand seiner ID ab.
-    Gibt 404 Not Found zurück, wenn der Skill nicht gefunden wird.
-    """
-    skills = data_manager.read_data(SKILLS_FILE)
-    skill = next((s for s in skills if s['id'] == id), None)
-    if skill:
-        return jsonify(skill)
-    return jsonify({"error": "Skill not found"}), 404
+def get_skill(id):
+    s = Skill.query.get(id)
+    if not s:
+        return jsonify({"error": "Skill not found"}), 404
+    return s.to_dict()
+
 
 @app.route('/skills', methods=['POST'])
 def create_skill():
-    """
-    Erstellt einen neuen Lern-Skill.
-    Erfordert 'name' und 'topicId' im JSON-Request-Body.
-    Generiert eine eindeutige ID und speichert den Skill.
-    """
-    new_skill_data = request.json
-    if not new_skill_data or 'name' not in new_skill_data or 'topicId' not in new_skill_data:
-        return jsonify({"error": "Name und Topic ID für den Skill sind erforderlich"}), 400
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    topic_id = payload.get("topicID") or payload.get("topicId")
+    difficulty = (payload.get("difficulty") or "beginner").strip()
 
-    new_skill_id = str(uuid.uuid4())
-    skill = {
-        "id": new_skill_id,
-        "name": new_skill_data['name'],
-        "topicId": new_skill_data['topicId'],
-        "difficulty": new_skill_data.get('difficulty', 'unknown') # 'difficulty' ist optional
-    }
+    if not name:
+        return jsonify({"error": "Field 'name' is required"}), 422
+    if not topic_id:
+        return jsonify({"error": "Field 'topicID' is required"}), 422
 
-    skills = data_manager.read_data(SKILLS_FILE)
-    skills.append(skill)
-    data_manager.write_data(SKILLS_FILE, skills)
+    if not Topic.query.get(topic_id):
+        return jsonify({"error": "topicID not found"}), 422
 
-    return jsonify(skill), 201
+    s = Skill(name=name, topic_id=topic_id, difficulty=difficulty)
+    db.session.add(s)
+    db.session.commit()
+    return s.to_dict(), 201
+
 
 @app.route('/skills/<id>', methods=['PUT'])
 def update_skill(id):
