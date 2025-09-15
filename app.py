@@ -267,25 +267,12 @@ def update_skill(id):
 
 @app.route('/skills/<id>', methods=['DELETE'])
 def delete_skill(id):
-    """
-    Löscht einen Lern-Skill anhand seiner ID.
-    Gibt 204 No Content zurück, wenn erfolgreich gelöscht.
-    """
-    skills = data_manager.read_data(SKILLS_FILE)
-
-    found_index = -1
-    for i, s in enumerate(skills):
-        if s['id'] == id:
-            found_index = i
-            break
-
-    if found_index == -1:
+    s = Skill.query.get(id)
+    if not s:
         return jsonify({"error": "Skill not found"}), 404
-
-    skills.pop(found_index)
-    data_manager.write_data(SKILLS_FILE, skills)
-
-    return '', 204
+    db.session.delete(s)
+    db.session.commit()
+    return "", 204
 
 if __name__ == '__main__':
     # Startet den Flask-Entwicklungsserver.
