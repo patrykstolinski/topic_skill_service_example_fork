@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request # Flask-Anwendung, JSON-Antworten und 
 from flask_migrate import Migrate
 from dotenv import load_dotenv
 from models import db, Topic, Skill
+from sqlalchemy import exists
 
 load_dotenv()
 
@@ -144,22 +145,23 @@ def delete_topic(id):
     Löscht ein Lern-Topic anhand seiner ID.
     Gibt 204 No Content zurück, wenn erfolgreich gelöscht.
     """
-    topics = data_manager.read_data(TOPICS_FILE)
+    topic = Topic.query.get(id)
 
-    found_index = -1
-    for i, t in enumerate(topics):
-        if t['id'] == id:
-            found_index = i
-            break
+    if not topic:
+        return jsonify({"error": "Topic with this ID was not found."}), 404
+    
+    has_skills = db.session.query(exists().where(Skill.topic_id == id)).scalar()
+    has_topics = db.session.query(exists().where(Topic.parent_topic_id == id)).scalar()
 
-    if found_index == -1:
-        return jsonify({"error": "Topic not found"}), 404
-
-    # Entferne das Topic aus der Liste
-    topics.pop(found_index)
-    data_manager.write_data(TOPICS_FILE, topics)
-
-    return '', 204 # 204 No Content Statuscode für erfolgreiche Löschung ohne Rückgabeinhalt
+    if has_skills:
+        return jsonify({"error":"Topic has dependent skills. Cannot delete the topic."}),409
+    
+    if has_topics: 
+        return jsonify({"error":"Topic has dependent topics. Cannot delete the topic."}),409
+    
+    db.session.delete(topic)
+    db.session.commit()
+    return "", 204
 
 # --- SKILL ENDPUNKTE ---
 
