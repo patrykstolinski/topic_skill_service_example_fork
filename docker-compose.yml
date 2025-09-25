@@ -1,5 +1,3 @@
-#docker compose topic-skill
-
 services:
   postgres:
     image: postgres:17.6
@@ -20,6 +18,6 @@ services:
       timeout: 10s
       retries: 20
       start_period: 15s
-
+  
 volumes:
   pgdata: {}
